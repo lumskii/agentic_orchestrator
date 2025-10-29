@@ -1,0 +1,44 @@
+// This is your Prisma schema file
+// Learn more: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Document {
+  id        Int      @id @default(autoincrement())
+  title     String
+  content   String
+  embedding String?  // Vector stored as string (JSON array)
+  metadata  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("documents")
+}
+
+model Run {
+  id         String   @id @default(uuid())
+  status     String   // pending, running, completed, failed
+  startTime  DateTime @default(now()) @map("start_time")
+  endTime    DateTime? @map("end_time")
+  steps      Json     @default("[]")
+  metadata   Json     @default("{}")
+
+  @@map("runs")
+}
+
+model Fork {
+  id               String   @id @default(uuid())
+  parentServiceId  String   @map("parent_service_id")
+  name             String
+  connectionString String?  @map("connection_string")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  @@map("forks")
+}
