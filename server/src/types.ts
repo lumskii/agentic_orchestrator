@@ -39,10 +39,12 @@ export interface TigerFork {
 
 export interface SearchResult {
   id: string;
+  title: string;
   content: string;
   bm25Score: number;
   vectorScore: number;
   hybridScore: number;
+  score: number; // Combined score for ranking
   metadata?: Record<string, any>;
 }
 
