@@ -5,13 +5,13 @@
  * Tests all customized agents and services with real logic
  */
 
-import { logger } from '../src/utils/logger.js';
-import { runETLAgent } from '../src/orchestrator/agents/etlAgent.js';
-import { runDBAAgent } from '../src/orchestrator/agents/dbaAgent.js';
-import { runMergeAgent } from '../src/orchestrator/agents/mergeAgent.js';
-import { searchService } from '../src/services/search.js';
-import { mcpClient } from '../src/services/mcpClient.js';
-import { tigerWrapper } from '../src/services/tigerWrapper.js';
+import { logger } from './src/utils/logger.ts';
+import { runETLAgent } from './src/orchestrator/agents/etlAgent.ts';
+import { runDBAAgent } from './src/orchestrator/agents/dbaAgent.ts';
+import { runMergeAgent } from './src/orchestrator/agents/mergeAgent.ts';
+import { searchService } from './src/services/search.ts';
+import { mcpClient } from './src/services/mcpClient.ts';
+import { tigerWrapper } from './src/services/tigerWrapper.ts';
 
 async function testAgents() {
   console.log('🚀 Testing Multi-Agent Orchestration Platform');
