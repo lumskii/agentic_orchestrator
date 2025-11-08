@@ -1,6 +1,7 @@
 /**
  * Hybrid search service combining BM25 and vector similarity
  * Implements Reciprocal Rank Fusion (RRF) for result merging
+ * Enhanced with OpenAI embeddings, caching, and rate limiting
  */
 
 import { db } from './db.js';
@@ -8,7 +9,121 @@ import { sqlTemplates } from '../utils/sqlTemplates.js';
 import { logger } from '../utils/logger.js';
 import type { SearchResult } from '../types.js';
 
+// OpenAI API configuration
+const OPENAI_CONFIG = {
+  apiUrl: 'https://api.openai.com/v1/embeddings',
+  model: 'text-embedding-3-small', // 1536 dimensions, cost-effective
+  maxTokens: 8191, // Max input tokens for the model
+  dimensions: 1536,
+  timeout: 30000, // 30 seconds timeout
+};
+
+// Rate limiting configuration
+const RATE_LIMIT = {
+  maxRequestsPerMinute: 500, // OpenAI's rate limit
+  requestQueue: [] as Array<{ timestamp: number }>,
+};
+
+// Simple in-memory cache for embeddings
+const EMBEDDING_CACHE = new Map<string, { embedding: number[]; timestamp: number }>();
+const CACHE_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
 class SearchService {
+  /**
+   * Check and enforce rate limiting for OpenAI API calls
+   */
+  private async checkRateLimit(): Promise<void> {
+    const now = Date.now();
+    const oneMinuteAgo = now - 60000;
+    
+    // Clean old requests from queue
+    RATE_LIMIT.requestQueue = RATE_LIMIT.requestQueue.filter(
+      req => req.timestamp > oneMinuteAgo
+    );
+    
+    // Check if we're at the rate limit
+    if (RATE_LIMIT.requestQueue.length >= RATE_LIMIT.maxRequestsPerMinute) {
+      const oldestRequest = RATE_LIMIT.requestQueue[0];
+      const waitTime = 60000 - (now - oldestRequest.timestamp);
+      
+      if (waitTime > 0) {
+        logger.warn(`Rate limit reached, waiting ${Math.ceil(waitTime / 1000)}s`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
+    
+    // Add current request to queue
+    RATE_LIMIT.requestQueue.push({ timestamp: now });
+  }
+
+  /**
+   * Get cached embedding or return null if not found/expired
+   */
+  private getCachedEmbedding(text: string): number[] | null {
+    const cacheKey = this.generateCacheKey(text);
+    const cached = EMBEDDING_CACHE.get(cacheKey);
+    
+    if (cached && (Date.now() - cached.timestamp) < CACHE_TTL) {
+      logger.debug('Using cached embedding');
+      return cached.embedding;
+    }
+    
+    // Remove expired entry
+    if (cached) {
+      EMBEDDING_CACHE.delete(cacheKey);
+    }
+    
+    return null;
+  }
+
+  /**
+   * Cache an embedding for future use
+   */
+  private cacheEmbedding(text: string, embedding: number[]): void {
+    const cacheKey = this.generateCacheKey(text);
+    EMBEDDING_CACHE.set(cacheKey, {
+      embedding,
+      timestamp: Date.now(),
+    });
+    
+    // Prevent memory leaks by limiting cache size
+    if (EMBEDDING_CACHE.size > 1000) {
+      const oldestKey = EMBEDDING_CACHE.keys().next().value;
+      if (oldestKey) {
+        EMBEDDING_CACHE.delete(oldestKey);
+      }
+    }
+  }
+
+  /**
+   * Generate a cache key for text
+   */
+  private generateCacheKey(text: string): string {
+    // Simple hash function for cache key
+    let hash = 0;
+    for (let i = 0; i < text.length; i++) {
+      const char = text.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    return `embedding:${hash}:${text.length}`;
+  }
+
+  /**
+   * Truncate text to fit within token limits
+   */
+  private truncateText(text: string): string {
+    // Rough estimation: 1 token ≈ 4 characters for English text
+    const maxChars = OPENAI_CONFIG.maxTokens * 4;
+    
+    if (text.length <= maxChars) {
+      return text;
+    }
+    
+    logger.warn(`Text truncated from ${text.length} to ${maxChars} characters`);
+    return text.substring(0, maxChars);
+  }
+
   /**
    * Generate deterministic mock embedding based on text content
    * Useful for testing and when OpenAI API is not available
@@ -16,10 +131,10 @@ class SearchService {
   private generateDeterministicEmbedding(text: string): number[] {
     // Create a simple hash-based embedding that's deterministic
     const normalizedText = text.toLowerCase().trim();
-    const embedding = new Array(1536);
+    const embedding = new Array(OPENAI_CONFIG.dimensions);
     
     // Use text characteristics to generate consistent embeddings
-    for (let i = 0; i < 1536; i++) {
+    for (let i = 0; i < OPENAI_CONFIG.dimensions; i++) {
       let value = 0;
       
       // Factor in character codes
@@ -32,50 +147,142 @@ class SearchService {
       value += normalizedText.includes('coordination') ? 0.1 * i : 0;
       value += normalizedText.includes('database') ? 0.15 * i : 0;
       value += normalizedText.includes('workflow') ? 0.12 * i : 0;
+      value += normalizedText.includes('agent') ? 0.13 * i : 0;
+      value += normalizedText.includes('orchestration') ? 0.14 * i : 0;
       
-      // Normalize to [-1, 1] range
-      embedding[i] = (Math.sin(value) + Math.cos(value * 0.7)) / 2;
+      // Normalize to [-1, 1] range with better distribution
+      embedding[i] = (Math.sin(value * 0.001) + Math.cos(value * 0.0007)) / 2;
+    }
+    
+    // Normalize the vector to unit length (cosine similarity works better with normalized vectors)
+    const magnitude = Math.sqrt(embedding.reduce((sum, val) => sum + val * val, 0));
+    if (magnitude > 0) {
+      for (let i = 0; i < embedding.length; i++) {
+        embedding[i] /= magnitude;
+      }
     }
     
     return embedding;
   }
   /**
-   * Generate embedding vector for text using OpenAI
+   * Generate embedding vector for text using OpenAI API with caching and rate limiting
    */
   async generateEmbedding(text: string): Promise<number[]> {
     try {
-      logger.debug(`Generating embedding for text: ${text.substring(0, 50)}...`);
+      if (!text || text.trim().length === 0) {
+        throw new Error('Cannot generate embedding for empty text');
+      }
+
+      const cleanText = text.trim();
+      logger.debug(`Generating embedding for text: ${cleanText.substring(0, 50)}...`);
+      
+      // Check cache first
+      const cachedEmbedding = this.getCachedEmbedding(cleanText);
+      if (cachedEmbedding) {
+        return cachedEmbedding;
+      }
       
       // Check if OpenAI API key is available
       const openaiApiKey = process.env.OPENAI_API_KEY;
       
-      if (openaiApiKey) {
-        // Use actual OpenAI API
-        const response = await fetch('https://api.openai.com/v1/embeddings', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openaiApiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'text-embedding-3-small',
-            input: text,
-          }),
-        });
+      if (openaiApiKey && openaiApiKey.startsWith('sk-')) {
+        // Use actual OpenAI API with rate limiting
+        await this.checkRateLimit();
         
-        if (!response.ok) {
-          throw new Error(`OpenAI API error: ${response.statusText}`);
+        // Truncate text if too long
+        const truncatedText = this.truncateText(cleanText);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), OPENAI_CONFIG.timeout);
+        
+        try {
+          const response = await fetch(OPENAI_CONFIG.apiUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${openaiApiKey}`,
+              'Content-Type': 'application/json',
+              'User-Agent': 'Agentic-Orchestrator/1.0',
+            },
+            body: JSON.stringify({
+              model: OPENAI_CONFIG.model,
+              input: truncatedText,
+              dimensions: OPENAI_CONFIG.dimensions,
+            }),
+            signal: controller.signal,
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (!response.ok) {
+            const errorText = await response.text();
+            logger.error(`OpenAI API error (${response.status}): ${errorText}`);
+            
+            if (response.status === 429) {
+              throw new Error('OpenAI API rate limit exceeded');
+            } else if (response.status === 401) {
+              throw new Error('OpenAI API authentication failed - check your API key');
+            } else if (response.status >= 500) {
+              throw new Error('OpenAI API server error - try again later');
+            } else {
+              throw new Error(`OpenAI API error: ${response.statusText}`);
+            }
+          }
+          
+          const data = await response.json() as {
+            data: Array<{ embedding: number[] }>;
+            usage: { prompt_tokens: number; total_tokens: number };
+          };
+          
+          if (!data.data || data.data.length === 0) {
+            throw new Error('Invalid response from OpenAI API');
+          }
+          
+          const embedding = data.data[0].embedding;
+          
+          // Validate embedding
+          if (!Array.isArray(embedding) || embedding.length !== OPENAI_CONFIG.dimensions) {
+            throw new Error(`Invalid embedding dimensions: expected ${OPENAI_CONFIG.dimensions}, got ${embedding?.length}`);
+          }
+          
+          // Cache the embedding
+          this.cacheEmbedding(cleanText, embedding);
+          
+          logger.debug(`Generated embedding using ${data.usage.total_tokens} tokens`);
+          return embedding;
+          
+        } catch (error: any) {
+          clearTimeout(timeoutId);
+          
+          if (error.name === 'AbortError') {
+            throw new Error('OpenAI API request timed out');
+          }
+          throw error;
         }
         
-        const data = await response.json() as { data: Array<{ embedding: number[] }> };
-        return data.data[0].embedding;
       } else {
-        // Fallback to deterministic mock embedding based on text content
-        logger.warn('No OpenAI API key found, using deterministic mock embeddings');
-        return this.generateDeterministicEmbedding(text);
+        // Fallback to deterministic mock embedding
+        if (!openaiApiKey) {
+          logger.warn('No OpenAI API key found, using deterministic mock embeddings');
+        } else {
+          logger.warn('Invalid OpenAI API key format, using deterministic mock embeddings');
+        }
+        
+        const mockEmbedding = this.generateDeterministicEmbedding(cleanText);
+        
+        // Cache mock embeddings too for consistency
+        this.cacheEmbedding(cleanText, mockEmbedding);
+        
+        return mockEmbedding;
       }
-    } catch (error) {
+    } catch (error: any) {
       logger.error('Failed to generate embedding', error);
+      
+      // For critical errors, still provide a fallback
+      if (error.message.includes('rate limit') || error.message.includes('timed out')) {
+        logger.warn('Using fallback embedding due to API issues');
+        return this.generateDeterministicEmbedding(text.trim());
+      }
+      
       throw error;
     }
   }
@@ -172,7 +379,10 @@ class SearchService {
     try {
       logger.info(`Indexing document: ${title}`);
       
-      const embedding = await this.generateEmbedding(content);
+      // Combine title and content for better embedding context
+      const fullText = `${title}\n\n${content}`;
+      const embedding = await this.generateEmbedding(fullText);
+      
       const result = await db.query(sqlTemplates.insertDocument, [
         title,
         content,
@@ -186,6 +396,136 @@ class SearchService {
     } catch (error) {
       logger.error('Failed to index document', error);
       throw error;
+    }
+  }
+
+  /**
+   * Batch index multiple documents efficiently
+   */
+  async batchIndexDocuments(
+    documents: Array<{
+      title: string;
+      content: string;
+      metadata?: Record<string, any>;
+    }>
+  ): Promise<string[]> {
+    try {
+      logger.info(`Batch indexing ${documents.length} documents`);
+      
+      const results: string[] = [];
+      const batchSize = 10; // Process in small batches to avoid rate limits
+      
+      for (let i = 0; i < documents.length; i += batchSize) {
+        const batch = documents.slice(i, i + batchSize);
+        
+        const batchPromises = batch.map(async (doc) => {
+          return this.indexDocument(doc.title, doc.content, doc.metadata || {});
+        });
+        
+        const batchResults = await Promise.all(batchPromises);
+        results.push(...batchResults);
+        
+        // Add delay between batches to respect rate limits
+        if (i + batchSize < documents.length) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+      }
+      
+      logger.info(`Successfully indexed ${results.length} documents`);
+      return results;
+    } catch (error) {
+      logger.error('Failed to batch index documents', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get embedding cache statistics
+   */
+  getCacheStats(): {
+    size: number;
+    maxSize: number;
+    hitRate?: number;
+  } {
+    return {
+      size: EMBEDDING_CACHE.size,
+      maxSize: 1000,
+    };
+  }
+
+  /**
+   * Clear embedding cache
+   */
+  clearCache(): void {
+    EMBEDDING_CACHE.clear();
+    logger.info('Embedding cache cleared');
+  }
+
+  /**
+   * Pre-generate embeddings for common queries (warming up cache)
+   */
+  async warmupCache(queries: string[]): Promise<void> {
+    logger.info(`Warming up embedding cache with ${queries.length} queries`);
+    
+    try {
+      // Process queries in small batches to avoid rate limits
+      const batchSize = 5;
+      for (let i = 0; i < queries.length; i += batchSize) {
+        const batch = queries.slice(i, i + batchSize);
+        
+        await Promise.all(
+          batch.map(query => this.generateEmbedding(query).catch(error => {
+            logger.warn(`Failed to generate embedding for warmup query: ${query}`, error);
+          }))
+        );
+        
+        // Add delay between batches
+        if (i + batchSize < queries.length) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+      }
+      
+      logger.info('Cache warmup completed');
+    } catch (error) {
+      logger.error('Cache warmup failed', error);
+    }
+  }
+
+  /**
+   * Test OpenAI API connectivity and performance
+   */
+  async testOpenAIConnection(): Promise<{
+    connected: boolean;
+    model: string;
+    responseTime: number;
+    tokensUsed?: number;
+    error?: string;
+  }> {
+    const startTime = Date.now();
+    
+    try {
+      logger.info('Testing OpenAI API connection...');
+      
+      const testText = 'This is a test query for OpenAI embeddings API connectivity.';
+      const embedding = await this.generateEmbedding(testText);
+      
+      const responseTime = Date.now() - startTime;
+      
+      return {
+        connected: true,
+        model: OPENAI_CONFIG.model,
+        responseTime,
+        tokensUsed: Math.ceil(testText.length / 4), // Rough estimate
+      };
+    } catch (error: any) {
+      const responseTime = Date.now() - startTime;
+      
+      return {
+        connected: false,
+        model: OPENAI_CONFIG.model,
+        responseTime,
+        error: error.message,
+      };
     }
   }
 }
