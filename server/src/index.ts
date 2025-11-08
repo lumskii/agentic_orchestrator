@@ -15,25 +15,25 @@ const fastify = Fastify({
   logger: true
 });
 
-// Register CORS
-await fastify.register(cors, {
-  origin: config.frontendUrl,
-  credentials: true
-});
-
-// Health check
-fastify.get('/health', async () => {
-  return { status: 'ok', timestamp: new Date().toISOString() };
-});
-
-// Register routes
-await fastify.register(runsRoutes, { prefix: '/api/runs' });
-await fastify.register(forksRoutes, { prefix: '/api/forks' });
-await fastify.register(questionsRoutes, { prefix: '/api/questions' });
-
 // Start server
 const start = async () => {
   try {
+    // Register CORS
+    await fastify.register(cors, {
+      origin: config.frontendUrl,
+      credentials: true
+    });
+
+    // Health check
+    fastify.get('/health', async () => {
+      return { status: 'ok', timestamp: new Date().toISOString() };
+    });
+
+    // Register routes
+    await fastify.register(runsRoutes, { prefix: '/api/runs' });
+    await fastify.register(forksRoutes, { prefix: '/api/forks' });
+    await fastify.register(questionsRoutes, { prefix: '/api/questions' });
+    
     await fastify.listen({ port: config.port, host: '0.0.0.0' });
     logger.info(`Server listening on port ${config.port}`);
     logger.info(`Environment: ${config.nodeEnv}`);
@@ -47,4 +47,24 @@ const start = async () => {
   }
 };
 
-start();
+// Handle graceful shutdown
+process.on('SIGINT', async () => {
+  logger.info('SIGINT signal received: closing HTTP server');
+  await fastify.close();
+  process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+  logger.info('SIGTERM signal received: closing HTTP server');
+  await fastify.close();
+  process.exit(0);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection', { reason, promise });
+});
+
+start().catch((err) => {
+  logger.error('Failed to start server:', err);
+  process.exit(1);
+});

@@ -38,3 +38,6 @@ prisma/migrations/
 
 # Tiger CLI
 .tiger/
+
+# Frontend
+frontend/NEW_UI_INTEGRATION.md
