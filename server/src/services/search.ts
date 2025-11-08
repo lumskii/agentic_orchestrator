@@ -313,11 +313,42 @@ class SearchService {
   }
 
   /**
+   * Check if vector operations are supported
+   */
+  private async isVectorSearchSupported(): Promise<boolean> {
+    try {
+      // Check if embedding column is actually vector type
+      const result = await db.query(`
+        SELECT data_type 
+        FROM information_schema.columns 
+        WHERE table_name = 'documents' 
+        AND column_name = 'embedding';
+      `);
+      
+      if (result.rows.length === 0) {
+        return false;
+      }
+      
+      const dataType = result.rows[0].data_type;
+      return dataType === 'USER-DEFINED'; // Vector type shows as USER-DEFINED
+    } catch (error) {
+      logger.warn('Could not check vector support, assuming not supported');
+      return false;
+    }
+  }
+
+  /**
    * Perform vector similarity search
    */
   async vectorSearch(query: string, limit: number = 10): Promise<SearchResult[]> {
     try {
       logger.info(`Executing vector search: ${query}`);
+      
+      const isVectorSupported = await this.isVectorSearchSupported();
+      if (!isVectorSupported) {
+        logger.warn('Vector search not supported, falling back to BM25');
+        return this.bm25Search(query, limit);
+      }
       
       const embedding = await this.generateEmbedding(query);
       const result = await db.query(sqlTemplates.vectorSearch, [JSON.stringify(embedding), limit]);
@@ -333,8 +364,8 @@ class SearchService {
         metadata: row.metadata,
       }));
     } catch (error) {
-      logger.error('Vector search failed', error);
-      throw error;
+      logger.error('Vector search failed, falling back to BM25', error);
+      return this.bm25Search(query, limit);
     }
   }
 
@@ -344,6 +375,12 @@ class SearchService {
   async hybridSearch(query: string, limit: number = 10): Promise<SearchResult[]> {
     try {
       logger.info(`Executing hybrid search: ${query}`);
+      
+      const isVectorSupported = await this.isVectorSearchSupported();
+      if (!isVectorSupported) {
+        logger.warn('Vector operations not supported, using BM25 only');
+        return this.bm25Search(query, limit);
+      }
       
       const embedding = await this.generateEmbedding(query);
       const result = await db.query(sqlTemplates.hybridSearch, [
@@ -363,8 +400,8 @@ class SearchService {
         metadata: row.metadata,
       }));
     } catch (error) {
-      logger.error('Hybrid search failed', error);
-      throw error;
+      logger.error('Hybrid search failed, falling back to BM25', error);
+      return this.bm25Search(query, limit);
     }
   }
 
@@ -381,12 +418,23 @@ class SearchService {
       
       // Combine title and content for better embedding context
       const fullText = `${title}\n\n${content}`;
-      const embedding = await this.generateEmbedding(fullText);
+      
+      let embeddingData: string;
+      const isVectorSupported = await this.isVectorSearchSupported();
+      
+      if (isVectorSupported) {
+        const embedding = await this.generateEmbedding(fullText);
+        embeddingData = JSON.stringify(embedding);
+      } else {
+        // Store as text if vector type not supported
+        const mockEmbedding = this.generateDeterministicEmbedding(fullText);
+        embeddingData = JSON.stringify(mockEmbedding);
+      }
       
       const result = await db.query(sqlTemplates.insertDocument, [
         title,
         content,
-        JSON.stringify(embedding),
+        embeddingData,
         JSON.stringify(metadata),
       ]);
       
