@@ -15,9 +15,9 @@ loadEnv({ path: join(__dirname, '../../../.env') });
 
 export const config = {
   // Server
-  port: parseInt(process.env.PORT || '3001', 10),
+  port: parseInt(process.env.PORT || '5000', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
-  frontendUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000',
+  frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
 
   // Tiger Cloud
   tigerApiKey: process.env.TIGER_API_KEY || '',
