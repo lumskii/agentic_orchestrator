@@ -40,24 +40,100 @@ export function RunDetails() {
       if (response.data.success && response.data.data) {
         // Transform API data to frontend Run format
         const apiRun = response.data.data
+        
+        // Map API steps to frontend agents with proper status
+        const agentMap = [
+          { id: 'etl', name: 'ETL Agent', icon: '🧱' },
+          { id: 'search', name: 'Search Agent', icon: '🔍' },
+          { id: 'analyst', name: 'Analyst Agent', icon: '📊' },
+          { id: 'dba', name: 'DBA Agent', icon: '⚙️' },
+          { id: 'merge', name: 'Merge Agent', icon: '✅' }
+        ]
+        
+        const transformedAgents = agentMap.map(agentTemplate => {
+          const step = apiRun.steps?.find((s: any) => s.agent === agentTemplate.id || s.name === agentTemplate.id)
+          if (step) {
+            return {
+              ...agentTemplate,
+              status: step.status as Agent['status'],
+              progress: step.status === 'completed' ? 100 : step.status === 'running' ? 50 : 0
+            }
+          }
+          return {
+            ...agentTemplate,
+            status: 'pending' as Agent['status'],
+            progress: 0
+          }
+        })
+        
+        // Count completed agents
+        const completedCount = transformedAgents.filter(a => a.status === 'completed').length
+        
+        // Calculate duration
+        let duration = 'In progress'
+        if (apiRun.endTime && apiRun.startTime) {
+          const start = new Date(apiRun.startTime)
+          const end = new Date(apiRun.endTime)
+          const diffMs = end.getTime() - start.getTime()
+          const diffSecs = Math.floor(diffMs / 1000)
+          const diffMins = Math.floor(diffSecs / 60)
+          if (diffMins > 0) {
+            duration = `${diffMins}m ${diffSecs % 60}s`
+          } else {
+            duration = `${diffSecs}s`
+          }
+        }
+        
+        // Create logs from steps and errors
+        const logs = ['[INFO] Run started...']
+        if (apiRun.steps && apiRun.steps.length > 0) {
+          apiRun.steps.forEach((step: any) => {
+            logs.push(`[INFO] ${step.name || step.agent} agent: ${step.status}`)
+            if (step.status === 'failed' && step.error) {
+              logs.push(`[ERROR] ${step.name || step.agent}: ${step.error}`)
+            }
+          })
+        }
+        
+        // Handle run-level errors
+        if (apiRun.status === 'failed') {
+          if (apiRun.metadata?.error) {
+            logs.push(`[ERROR] Run failed: ${apiRun.metadata.error}`)
+          } else {
+            logs.push('[ERROR] Run failed with unknown error')
+          }
+        }
+        
+        // If run failed but no steps were executed, mark all agents as failed
+        if (apiRun.status === 'failed' && (!apiRun.steps || apiRun.steps.length === 0)) {
+          transformedAgents.forEach(agent => {
+            agent.status = 'failed'
+            agent.progress = 0
+          })
+        }
+        
+        // Map API status to frontend status
+        const mapStatus = (apiStatus: string): Run['status'] => {
+          switch (apiStatus) {
+            case 'running': return 'active'
+            case 'completed': return 'completed'
+            case 'failed': return 'failed'
+            default: return 'pending'
+          }
+        }
+
         const transformedRun: Run = {
           id: apiRun.id,
-          status: apiRun.status as Run['status'],
+          status: mapStatus(apiRun.status),
           forkName: `fork-${apiRun.id.slice(0, 8)}`,
-          forkServiceId: 'api-service',
-          agentsCompleted: 0,
+          forkServiceId: apiRun.metadata?.serviceId || 'api-service',
+          agentsCompleted: completedCount,
           totalAgents: 5,
           startedAt: apiRun.startTime,
           endedAt: apiRun.endTime,
-          duration: apiRun.endTime ? 'Completed' : 'In progress',
-          agents: [
-            { id: 'etl', name: 'ETL Agent', icon: '🧱', status: 'pending', progress: 0 },
-            { id: 'search', name: 'Search Agent', icon: '🔍', status: 'pending', progress: 0 },
-            { id: 'analyst', name: 'Analyst Agent', icon: '📊', status: 'pending', progress: 0 },
-            { id: 'dba', name: 'DBA Agent', icon: '⚙️', status: 'pending', progress: 0 },
-            { id: 'merge', name: 'Merge Agent', icon: '✅', status: 'pending', progress: 0 }
-          ],
-          logs: ['[INFO] Run started...', '[INFO] Initializing agents...']
+          duration,
+          agents: transformedAgents,
+          logs
         }
         setRun(transformedRun)
       } else {
@@ -115,12 +191,24 @@ export function RunDetails() {
             Back to Dashboard
           </button>
 
-          {allAgentsCompleted && (
+          {allAgentsCompleted && run.status === 'completed' && (
             <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 mb-6 flex items-center gap-3">
               <CheckCircleIcon className="text-green-500" size={24} />
               <p className="text-green-500 font-medium">
                 All agents completed successfully!
               </p>
+            </div>
+          )}
+
+          {run.status === 'failed' && (
+            <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 mb-6 flex items-center gap-3">
+              <TrashIcon className="text-red-500" size={24} />
+              <div>
+                <p className="text-red-500 font-medium">Run Failed</p>
+                <p className="text-red-400 text-sm mt-1">
+                  {run.logs.find(log => log.includes('[ERROR]'))?.replace('[ERROR] Run failed: ', '') || 'An error occurred during execution'}
+                </p>
+              </div>
             </div>
           )}
 
@@ -135,7 +223,12 @@ export function RunDetails() {
                 </p>
               </div>
               <span
-                className={`px-4 py-2 rounded-lg font-medium ${run.status === 'completed' ? 'bg-green-500/10 text-green-500' : run.status === 'active' ? 'bg-[#00B8D9]/10 text-[#00B8D9]' : 'bg-red-500/10 text-red-500'}`}
+                className={`px-4 py-2 rounded-lg font-medium ${
+                  run.status === 'completed' ? 'bg-green-500/10 text-green-500' : 
+                  run.status === 'active' ? 'bg-[#00B8D9]/10 text-[#00B8D9]' : 
+                  run.status === 'failed' ? 'bg-red-500/10 text-red-500' :
+                  'bg-zinc-500/10 text-zinc-500'
+                }`}
               >
                 {run.status.toUpperCase()}
               </span>

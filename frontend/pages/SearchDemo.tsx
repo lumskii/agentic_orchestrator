@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import { Navbar } from '../components/Navbar'
 import { mockSearchResults } from '../data/mockData'
-import { Search as SearchIcon } from 'lucide-react'
+import { questionsAPI } from '../lib/api'
+import { Search as SearchIcon, Loader2 as LoaderIcon } from 'lucide-react'
 import {
   BarChart,
   Bar,
@@ -21,12 +22,56 @@ import {
 export function SearchDemo() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchMode, setSearchMode] = useState<
-    'semantic' | 'keyword' | 'hybrid'
+    'bm25' | 'vector' | 'hybrid'
   >('hybrid')
   const [activeTab, setActiveTab] = useState<'bm25' | 'vector' | 'hybrid'>(
     'hybrid',
   )
+  const [searchResult, setSearchResult] = useState<any>(null)
+  const [isSearching, setIsSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
+  const [searchTime, setSearchTime] = useState<number | null>(null)
+  const [hasSearched, setHasSearched] = useState(false)
 
+  const performSearch = async () => {
+    if (!searchQuery.trim()) return
+    
+    setIsSearching(true)
+    setSearchError(null)
+    const startTime = Date.now()
+    
+    try {
+      const response = await questionsAPI.ask({
+        question: searchQuery,
+        method: searchMode
+      })
+      
+      const endTime = Date.now()
+      setSearchTime(endTime - startTime)
+      setSearchResult(response.data)
+      setHasSearched(true)
+    } catch (error) {
+      setSearchError('Failed to perform search. Please try again.')
+      console.error('Search error:', error)
+    } finally {
+      setIsSearching(false)
+    }
+  }
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    performSearch()
+  }
+
+  const handleSearchModeChange = (mode: 'bm25' | 'vector' | 'hybrid') => {
+    setSearchMode(mode)
+    if (hasSearched && searchQuery.trim()) {
+      // Re-search with new mode
+      setTimeout(performSearch, 100)
+    }
+  }
+
+  // For the charts, use mock data if no real search results
   const filteredResults = mockSearchResults.filter((r) => {
     if (activeTab === 'bm25') return r.type === 'bm25' || r.type === 'hybrid'
     if (activeTab === 'vector')
@@ -77,7 +122,7 @@ export function SearchDemo() {
           </div>
 
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg p-6 mb-6">
-            <div className="flex gap-4 mb-4">
+            <form onSubmit={handleSearchSubmit} className="flex gap-4 mb-4">
               <div className="flex-1 relative">
                 <SearchIcon
                   className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500"
@@ -88,21 +133,66 @@ export function SearchDemo() {
                   placeholder="Search for database topics..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg pl-12 pr-4 py-3 text-white focus:outline-none focus:border-[#00B8D9]"
+                  className="w-full bg-zinc-800 border border-zinc-700 rounded-lg pl-12 pr-20 py-3 text-white focus:outline-none focus:border-[#00B8D9]"
+                  disabled={isSearching}
                 />
+                {isSearching && (
+                  <LoaderIcon className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 animate-spin" size={20} />
+                )}
               </div>
-              <div className="flex gap-2 bg-zinc-800 p-1 rounded-lg">
-                {(['semantic', 'keyword', 'hybrid'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => setSearchMode(mode)}
-                    className={`px-4 py-2 rounded-lg font-medium transition-colors ${searchMode === mode ? 'bg-[#00B8D9] text-white' : 'text-zinc-400 hover:text-white'}`}
-                  >
-                    {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                  </button>
-                ))}
-              </div>
+              <button
+                type="submit"
+                disabled={isSearching || !searchQuery.trim()}
+                className="px-6 py-3 bg-[#00B8D9] text-white rounded-lg font-medium hover:bg-[#00a5c3] disabled:bg-zinc-700 disabled:text-zinc-500 transition-colors"
+              >
+                {isSearching ? 'Searching...' : 'Search'}
+              </button>
+            </form>
+            
+            <div className="flex gap-2 bg-zinc-800 p-1 rounded-lg mb-4">
+              {(['bm25', 'vector', 'hybrid'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => handleSearchModeChange(mode)}
+                  className={`px-4 py-2 rounded-lg font-medium transition-colors ${searchMode === mode ? 'bg-[#00B8D9] text-white' : 'text-zinc-400 hover:text-white'}`}
+                  disabled={isSearching}
+                >
+                  {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                </button>
+              ))}
             </div>
+
+            {/* Search Status and Results */}
+            {searchError && (
+              <div className="mb-4 p-4 bg-red-900/20 border border-red-500/30 rounded-lg">
+                <p className="text-red-400">{searchError}</p>
+              </div>
+            )}
+
+            {hasSearched && searchResult && (
+              <div className="mb-4 p-4 bg-zinc-800 border border-zinc-700 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-white font-medium">Search Result</h3>
+                  {searchTime && (
+                    <span className="text-zinc-400 text-sm">
+                      {searchTime}ms using {searchMode.toUpperCase()}
+                    </span>
+                  )}
+                </div>
+                <p className="text-zinc-300 mb-2">
+                  <strong>Question:</strong> {searchResult.question}
+                </p>
+                <p className="text-zinc-300">
+                  <strong>Answer:</strong> {searchResult.answer || 'No answer found'}
+                </p>
+              </div>
+            )}
+
+            {hasSearched && !searchResult && !searchError && !isSearching && (
+              <div className="mb-4 p-4 bg-zinc-800 border border-zinc-700 rounded-lg">
+                <p className="text-zinc-400">No results found for your search.</p>
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">

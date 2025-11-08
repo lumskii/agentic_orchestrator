@@ -7,6 +7,7 @@ import { InlineError } from '../components/ErrorDisplay'
 import { mockRuns } from '../data/mockData'
 import { runsAPI } from '../lib/api'
 import { Search as SearchIcon } from 'lucide-react'
+import type { Run } from '../types'
 
 export function Dashboard() {
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -27,8 +28,52 @@ export function Dashboard() {
       setError(null)
       const response = await runsAPI.list()
       if (response.data.success && response.data.data.length > 0) {
-        // Cast the API response to the same shape as mockRuns to satisfy the state type
-        setRuns(response.data.data as unknown as typeof mockRuns)
+        // Transform API runs to frontend format
+        const transformedRuns = response.data.data.map((apiRun: any) => {
+          // Calculate duration
+          let duration = 'In progress'
+          if (apiRun.endTime && apiRun.startTime) {
+            const start = new Date(apiRun.startTime)
+            const end = new Date(apiRun.endTime)
+            const diffMs = end.getTime() - start.getTime()
+            const diffSecs = Math.floor(diffMs / 1000)
+            const diffMins = Math.floor(diffSecs / 60)
+            if (diffMins > 0) {
+              duration = `${diffMins}m ${diffSecs % 60}s`
+            } else {
+              duration = `${diffSecs}s`
+            }
+          }
+
+          // Count completed agents from steps
+          const completedCount = apiRun.steps?.filter((step: any) => step.status === 'completed').length || 0
+          
+          // Map API status to frontend status
+          const mapStatus = (apiStatus: string): Run['status'] => {
+            switch (apiStatus) {
+              case 'running': return 'active'
+              case 'completed': return 'completed'
+              case 'failed': return 'failed'
+              default: return 'pending'
+            }
+          }
+
+          return {
+            id: apiRun.id,
+            status: mapStatus(apiRun.status),
+            forkName: `fork-${apiRun.id.slice(0, 8)}`,
+            forkServiceId: apiRun.metadata?.serviceId || 'api-service',
+            agentsCompleted: completedCount,
+            totalAgents: 5,
+            startedAt: apiRun.startTime,
+            endedAt: apiRun.endTime,
+            duration,
+            agents: [], // Not needed for dashboard table
+            logs: [] // Not needed for dashboard table
+          }
+        })
+        
+        setRuns(transformedRuns)
       }
     } catch (error) {
       console.error('Failed to load runs:', error)
