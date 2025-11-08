@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { mockRuns, mockSearchResults } from '../data/mockData'
 import { Navbar } from '../components/Navbar'
@@ -6,33 +6,100 @@ import { AgentProgressCard } from '../components/AgentProgressCard'
 import { ForkLifecycleCard } from '../components/ForkLifecycleCard'
 import { ConsoleLogPanel } from '../components/ConsoleLogPanel'
 import { SearchResultsPanel } from '../components/SearchResultsPanel'
-import { ArrowLeft as ArrowLeftIcon, CheckCircle as CheckCircleIcon, Trash as TrashIcon } from 'lucide-react'
+import { PageLoader } from '../components/LoadingSpinner'
+import { PageError } from '../components/ErrorDisplay'
+import { runsAPI } from '../lib/api'
+import type { Run, Agent } from '../types'
+import type { Run as APIRun } from '../lib/api'
+import { 
+  ArrowLeft as ArrowLeftIcon, 
+  CheckCircle as CheckCircleIcon, 
+  Trash as TrashIcon
+} from 'lucide-react'
 
 export function RunDetails() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [run, setRun] = useState<Run | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const run = mockRuns.find((r) => r.id === id)
+  useEffect(() => {
+    if (id) {
+      loadRunDetails(id)
+    }
+  }, [id])
 
-  if (!run) {
+  const loadRunDetails = async (runId: string) => {
+    try {
+      setLoading(true)
+      setError(null)
+      
+      // Try API first
+      const response = await runsAPI.get(runId)
+      if (response.data.success && response.data.data) {
+        // Transform API data to frontend Run format
+        const apiRun = response.data.data
+        const transformedRun: Run = {
+          id: apiRun.id,
+          status: apiRun.status as Run['status'],
+          forkName: `fork-${apiRun.id.slice(0, 8)}`,
+          forkServiceId: 'api-service',
+          agentsCompleted: 0,
+          totalAgents: 5,
+          startedAt: apiRun.startTime,
+          endedAt: apiRun.endTime,
+          duration: apiRun.endTime ? 'Completed' : 'In progress',
+          agents: [
+            { id: 'etl', name: 'ETL Agent', icon: '🧱', status: 'pending', progress: 0 },
+            { id: 'search', name: 'Search Agent', icon: '🔍', status: 'pending', progress: 0 },
+            { id: 'analyst', name: 'Analyst Agent', icon: '📊', status: 'pending', progress: 0 },
+            { id: 'dba', name: 'DBA Agent', icon: '⚙️', status: 'pending', progress: 0 },
+            { id: 'merge', name: 'Merge Agent', icon: '✅', status: 'pending', progress: 0 }
+          ],
+          logs: ['[INFO] Run started...', '[INFO] Initializing agents...']
+        }
+        setRun(transformedRun)
+      } else {
+        // Fallback to mock data
+        const mockRun = mockRuns.find((r) => r.id === runId)
+        if (mockRun) {
+          setRun(mockRun)
+        } else {
+          setError('Run not found')
+        }
+      }
+    } catch (apiError) {
+      console.warn('API failed, falling back to mock data:', apiError)
+      // Fallback to mock data
+      const mockRun = mockRuns.find((r) => r.id === runId)
+      if (mockRun) {
+        setRun(mockRun)
+      } else {
+        setError('Run not found')
+      }
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Loading state
+  if (loading) {
+    return <PageLoader text="Loading run details..." />
+  }
+
+  // Error state
+  if (error || !run) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-black min-h-screen">
-        <div className="text-center">
-          <h2 className="text-white text-2xl font-semibold mb-2">
-            Run not found
-          </h2>
-          <button
-            onClick={() => navigate('/')}
-            className="text-[#00B8D9] hover:text-[#00a5c3]"
-          >
-            ← Back to Dashboard
-          </button>
-        </div>
-      </div>
+      <PageError 
+        title={error || 'Run not found'}
+        message="The requested run could not be found or loaded."
+        onGoBack={() => navigate('/')}
+      />
     )
   }
 
-  const allAgentsCompleted = run.agents.every((a) => a.status === 'completed')
+  const allAgentsCompleted = run.agents.every((a: Agent) => a.status === 'completed')
 
   return (
     <div className="flex-1 flex flex-col bg-black min-h-screen">
@@ -101,7 +168,7 @@ export function RunDetails() {
                   Agent Progress
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {run.agents.map((agent, index) => (
+                  {run.agents.map((agent: Agent, index: number) => (
                     <AgentProgressCard
                       key={agent.id}
                       agent={agent}

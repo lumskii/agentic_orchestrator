@@ -5,20 +5,33 @@ import { motion, AnimatePresence } from 'framer-motion'
 interface NewRunModalProps {
   isOpen: boolean
   onClose: () => void
-  onSubmit: (data: { dataset: string; question: string }) => void
+  onSubmit: (data: { dataset: string; question: string }) => Promise<void>
 }
 
 export function NewRunModal({ isOpen, onClose, onSubmit }: NewRunModalProps) {
   const [dataset, setDataset] = useState('sample-analytics')
   const [question, setQuestion] = useState('')
+  const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    onSubmit({
-      dataset,
-      question,
-    })
-    onClose()
+    if (isSubmitting) return
+    
+    try {
+      setIsSubmitting(true)
+      await onSubmit({
+        dataset,
+        question,
+      })
+      onClose()
+      // Reset form
+      setDataset('sample-analytics')
+      setQuestion('')
+    } catch (error) {
+      console.error('Failed to create run:', error)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -110,9 +123,17 @@ export function NewRunModal({ isOpen, onClose, onSubmit }: NewRunModalProps) {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 px-4 py-2 bg-[#00B8D9] text-white rounded-lg hover:bg-[#00a5c3] transition-colors font-medium"
+                  disabled={isSubmitting}
+                  className="flex-1 px-4 py-2 bg-[#00B8D9] text-white rounded-lg hover:bg-[#00a5c3] transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
-                  Start Run
+                  {isSubmitting ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Starting...
+                    </>
+                  ) : (
+                    'Start Run'
+                  )}
                 </button>
               </div>
             </form>

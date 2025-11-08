@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react'
 import { Navbar } from '../components/Navbar'
 import { RunTable } from '../components/RunTable'
 import { NewRunModal } from '../components/NewRunModal'
+import { TableLoader } from '../components/LoadingSpinner'
+import { InlineError } from '../components/ErrorDisplay'
 import { mockRuns } from '../data/mockData'
 import { runsAPI } from '../lib/api'
 import { Search as SearchIcon } from 'lucide-react'
@@ -12,6 +14,7 @@ export function Dashboard() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   // Load runs from API on mount
   useEffect(() => {
@@ -21,6 +24,7 @@ export function Dashboard() {
   const loadRuns = async () => {
     try {
       setLoading(true)
+      setError(null)
       const response = await runsAPI.list()
       if (response.data.success && response.data.data.length > 0) {
         // Cast the API response to the same shape as mockRuns to satisfy the state type
@@ -28,6 +32,7 @@ export function Dashboard() {
       }
     } catch (error) {
       console.error('Failed to load runs:', error)
+      setError('Failed to load runs from server. Using demo data.')
       // Keep using mock data if API fails
     } finally {
       setLoading(false)
@@ -36,16 +41,12 @@ export function Dashboard() {
 
   const handleNewRun = async (data: { dataset: string; question: string }) => {
     console.log('Creating new run:', data)
-    try {
-      const response = await runsAPI.create({
-        question: data.question || 'Analyze database performance and suggest optimizations',
-        serviceId: data.dataset,
-      })
-      if (response.data.success) {
-        await loadRuns()
-      }
-    } catch (error) {
-      console.error('Failed to create run:', error)
+    const response = await runsAPI.create({
+      question: data.question || 'Analyze database performance and suggest optimizations',
+      serviceId: data.dataset,
+    })
+    if (response.data.success) {
+      await loadRuns()
     }
   }
 
@@ -90,8 +91,22 @@ export function Dashboard() {
             </div>
           </div>
 
+          {error && (
+            <div className="mb-4">
+              <InlineError 
+                title="Connection Issue"
+                message={error}
+                onRetry={loadRuns}
+              />
+            </div>
+          )}
+
           <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden">
-            <RunTable runs={filteredRuns} />
+            {loading ? (
+              <TableLoader text="Loading runs..." />
+            ) : (
+              <RunTable runs={filteredRuns} />
+            )}
           </div>
         </div>
       </div>

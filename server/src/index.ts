@@ -7,6 +7,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { config } from './utils/config.js';
 import { logger } from './utils/logger.js';
+import { dbInitializer } from './services/dbInit.js';
 import runsRoutes from './routes/runs.js';
 import forksRoutes from './routes/forks.js';
 import questionsRoutes from './routes/questions.js';
@@ -18,15 +19,24 @@ const fastify = Fastify({
 // Start server
 const start = async () => {
   try {
+    // Initialize database first
+    logger.info('🗄️ Initializing database...');
+    await dbInitializer.initialize();
+
     // Register CORS
     await fastify.register(cors, {
       origin: config.frontendUrl,
       credentials: true
     });
 
-    // Health check
+    // Enhanced health check with database status
     fastify.get('/health', async () => {
-      return { status: 'ok', timestamp: new Date().toISOString() };
+      const dbHealth = await dbInitializer.checkHealth();
+      return { 
+        status: 'ok', 
+        timestamp: new Date().toISOString(),
+        database: dbHealth
+      };
     });
 
     // Register routes
