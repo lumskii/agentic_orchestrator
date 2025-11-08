@@ -13,10 +13,23 @@
     "seed": "cd server && npm run seed",
     "install:all": "npm install && cd server && npm install && cd ../frontend && npm install"
   },
-  "keywords": ["agentic", "postgres", "tiger", "orchestration", "ai"],
+  "keywords": [
+    "agentic",
+    "postgres",
+    "tiger",
+    "orchestration",
+    "ai"
+  ],
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "concurrently": "^8.2.2"
+    "concurrently": "^8.2.2",
+    "prisma": "^6.19.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.0"
+  },
+  "prisma": {
+    "seed": "tsx server/src/utils/seed.ts"
   }
 }
