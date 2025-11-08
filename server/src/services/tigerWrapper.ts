@@ -34,7 +34,7 @@ class TigerWrapper {
 
   constructor() {
     this.config = {
-      apiKey: process.env.TIGER_API_KEY,
+      apiKey: process.env.TIGER_API_KEY || undefined, // Will be undefined if not set
       endpoint: process.env.TIGER_ENDPOINT || 'https://api.timescale.cloud',
       region: process.env.TIGER_REGION || 'us-east-1',
       timeout: parseInt(process.env.TIGER_TIMEOUT || '30000', 10),
@@ -42,6 +42,11 @@ class TigerWrapper {
     
     // Try different possible Tiger CLI paths
     this.cliPath = process.env.TIGER_CLI_PATH || 'tiger';
+    
+    // Log configuration status for debugging
+    if (!this.config.apiKey) {
+      logger.warn('TIGER_API_KEY not found in environment. Tiger CLI will rely on `tiger auth login` authentication.');
+    }
   }
 
   /**
@@ -58,6 +63,10 @@ class TigerWrapper {
         // Set configuration if API key is available
         if (this.config.apiKey) {
           await this.setConfiguration();
+          logger.info('Using Tiger API key authentication');
+        } else {
+          // Try to validate CLI-based auth
+          await this.validateCliAuthentication();
         }
         logger.info('Tiger CLI wrapper initialized successfully');
       } else {
@@ -66,6 +75,19 @@ class TigerWrapper {
     } catch (error) {
       logger.error('Failed to initialize Tiger CLI wrapper', error);
       throw error;
+    }
+  }
+
+  /**
+   * Validate CLI-based authentication (when no API key is provided)
+   */
+  private async validateCliAuthentication(): Promise<void> {
+    try {
+      // Try to check auth status
+      await this.executeTigerCommand(`${this.cliPath} auth status`, { silent: true });
+      logger.info('Using Tiger CLI authentication (logged in via `tiger auth login`)');
+    } catch (error) {
+      logger.warn('Tiger CLI authentication not configured. Please run `tiger auth login` or set TIGER_API_KEY environment variable');
     }
   }
 
@@ -125,9 +147,15 @@ class TigerWrapper {
         logger.debug(`Executing Tiger CLI command: ${command.replace(/api-key\s+\S+/, 'api-key [REDACTED]')}`);
       }
       
+      // Build environment - only include TIGER_API_KEY if it exists
+      const env = { ...process.env };
+      if (this.config.apiKey) {
+        env.TIGER_API_KEY = this.config.apiKey;
+      }
+      
       const { stdout, stderr } = await execAsync(command, { 
         timeout,
-        env: { ...process.env, TIGER_API_KEY: this.config.apiKey }
+        env
       });
       
       if (stderr && !silent) {
