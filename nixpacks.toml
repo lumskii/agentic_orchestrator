@@ -1,0 +1,11 @@
+[phases.setup]
+cmds = ["npm run install:all"]
+
+[phases.build] 
+cmds = ["npm run build:server"]
+
+[start]
+cmd = "npm run railway:start"
+
+[variables]
+NODE_ENV = "production"

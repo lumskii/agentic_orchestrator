@@ -7,10 +7,6 @@ healthcheckTimeout = 300
 restartPolicyType = "on_failure"
 restartPolicyMaxRetries = 3
 
-[[services]]
-name = "backend"
-source = "server"
-
-[services.backend.variables]
+[variables]
 NODE_ENV = "production"
 PORT = "$PORT"
