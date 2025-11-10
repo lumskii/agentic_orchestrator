@@ -126,7 +126,7 @@ agentic-orchestrator/
 ### **Step 1: Clone and Install**
 
 ```bash
-git clone https://github.com/your-username/agentic-orchestrator
+git clone https://github.com/lumskii/agentic-orchestrator
 cd agentic-orchestrator
 npm run install:all
 ```
@@ -170,11 +170,11 @@ DATABASE_URL=postgresql://user:password@host:port/database
 OPENAI_API_KEY=your_openai_api_key_here
 
 # Server Configuration
-PORT=3001
+PORT=5000
 NODE_ENV=development
 
 # Frontend URL
-NEXT_PUBLIC_API_URL=http://localhost:3001
+NEXT_PUBLIC_API_URL=http://localhost:3000
 ```
 
 ### **Step 4: Start Local PostgreSQL (Optional)**
@@ -213,8 +213,8 @@ npm run dev
 
 This starts both servers concurrently:
 - **Frontend:** http://localhost:3000
-- **Backend:** http://localhost:3001
-- **API Docs:** http://localhost:3001/health
+- **Backend:** http://localhost:5000
+- **API Docs:** http://localhost:5000/health
 
 ---
 
@@ -534,9 +534,9 @@ curl -X POST http://localhost:3001/api/questions \
 ## 🏅 Submission Details
 
 - **DEV Submission:** [Link to DEV Article]
-- **GitHub Repository:** [https://github.com/your-username/agentic-orchestrator](https://github.com/your-username/agentic-orchestrator)
+- **GitHub Repository:** [https://github.com/lumskii/agentic-orchestrator](https://github.com/lumskii/agentic-orchestrator)
 - **Live Demo:** [Coming Soon]
-- **Contact:** [Your Email] | [Twitter/X Handle]
+- **Contact:** lumi8866@gmail.com | [Twitter/X Handle]
 
 ---
 
@@ -613,8 +613,8 @@ Special thanks to:
 
 **🎊 Built for the Agentic Postgres Challenge 2025 🎊**
 
-[Report Bug](https://github.com/your-username/agentic-orchestrator/issues) · 
-[Request Feature](https://github.com/your-username/agentic-orchestrator/issues) · 
+[Report Bug](https://github.com/lumskii/agentic-orchestrator/issues) · 
+[Request Feature](https://github.com/lumskii/agentic-orchestrator/issues) · 
 [View Demo](https://your-demo-url.com)
 
 </div>
