@@ -45,6 +45,14 @@ const start = async () => {
       };
     });
 
+    // API health check endpoint for Railway
+    fastify.get('/api/health', async () => {
+      return { 
+        status: 'ok', 
+        timestamp: new Date().toISOString()
+      };
+    });
+
     // Register routes
     await fastify.register(runsRoutes, { prefix: '/api/runs' });
     await fastify.register(forksRoutes, { prefix: '/api/forks' });

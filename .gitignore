@@ -58,3 +58,5 @@ server/test-openai-embeddings.mjs
 
 scripts
 sample_data.csv
+DEPLOYMENT.md
+HOSTING_COMPARISON.md
