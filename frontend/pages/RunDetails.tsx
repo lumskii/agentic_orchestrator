@@ -180,16 +180,19 @@ export function RunDetails() {
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({}),
       })
 
       const result = await response.json()
 
       if (result.success) {
         const mergeData = result.data
+        const isAlreadyApproved = mergeData.status === 'already_approved'
+        
         setMergeStatus({
           type: 'success',
-          message: 'Merge approved successfully!',
-          details: `Changes merged at ${new Date(mergeData.mergedAt).toLocaleString()}. Performance improvement: ${mergeData.performanceImprovement}. Rollback available.`
+          message: isAlreadyApproved ? 'Already merged to production' : 'Merge approved successfully!',
+          details: `Changes merged at ${new Date(mergeData.mergedAt).toLocaleString()}. Performance improvement: ${mergeData.performanceImprovement}. Rollback available.${isAlreadyApproved ? ' (Previously merged)' : ''}`
         })
 
         // Refresh run data to show updated status

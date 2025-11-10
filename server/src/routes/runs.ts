@@ -67,6 +67,23 @@ const runsRoutes: FastifyPluginAsync = async (fastify) => {
         return reply.code(400).send({ success: false, error: 'Run must be completed before merge approval' });
       }
 
+      // Check if merge step exists and was successful
+      const mergeStep = run.steps?.find(step => step.name === 'merge');
+      if (mergeStep && mergeStep.status === 'completed' && mergeStep.output?.status === 'success') {
+        // Already merged successfully, return the existing merge data
+        const existingMergeResult = {
+          runId: id,
+          mergedAt: mergeStep.output.mergedAt,
+          status: 'already_approved',
+          productionChanges: mergeStep.output.changesApplied || 0,
+          performanceImprovement: mergeStep.output.performanceImprovement || '0%',
+          rollbackAvailable: true,
+          message: 'This run has already been successfully merged to production'
+        };
+        
+        return { success: true, data: existingMergeResult };
+      }
+
       // Simulate merge approval process
       logger.info(`Approving merge for run: ${id}`);
       
