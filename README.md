@@ -439,13 +439,13 @@ curl -X POST http://localhost:3001/api/questions \
 > 4. Safe merge to production
 > 5. Fork cleanup and resource management
 
-**Video Link:** [Coming Soon - Recording in Progress]
+**Video Link:** [Demo video](https://www.loom.com/share/396d1111c6e74cada7d6688d9948c54a)
 
 **Screenshots:**
 
 | Dashboard | Fork Creation | Hybrid Search |
 |-----------|---------------|---------------|
-| ![Dashboard](docs/screenshots/dashboard.png) | ![Forks](docs/screenshots/forks.png) | ![Search](docs/screenshots/search.png) |
+| ![alt text](image.png) | ![alt text](image-1.png) | ![alt text](image-2.png) |
 
 ---
 
@@ -455,7 +455,7 @@ curl -X POST http://localhost:3001/api/questions \
 
 ```typescript
 // Via API
-const response = await fetch('http://localhost:3001/api/runs', {
+const response = await fetch('http://localhost:3000/api/runs', {
   method: 'POST',
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
@@ -569,7 +569,7 @@ curl -X POST http://localhost:3001/api/questions \
 
 ## 👨‍💻 Credits
 
-**Developed by [Your Name] for the Agentic Postgres Challenge** — showcasing the power of AI-native databases, zero-copy branching, and multi-agent orchestration for safe, intelligent database operations.
+**Developed by Olu Mike Sholola for the Agentic Postgres Challenge** — showcasing the power of AI-native databases, zero-copy branching, and multi-agent orchestration for safe, intelligent database operations.
 
 **Technologies Used:**
 - TypeScript, Node.js, Next.js 14, React 18
@@ -615,6 +615,6 @@ Special thanks to:
 
 [Report Bug](https://github.com/lumskii/agentic-orchestrator/issues) · 
 [Request Feature](https://github.com/lumskii/agentic-orchestrator/issues) · 
-[View Demo](https://your-demo-url.com)
+[View Demo](https://www.loom.com/share/396d1111c6e74cada7d6688d9948c54a)
 
 </div>
