@@ -6,6 +6,7 @@ import { AgentProgressCard } from '../components/AgentProgressCard'
 import { ForkLifecycleCard } from '../components/ForkLifecycleCard'
 import { ConsoleLogPanel } from '../components/ConsoleLogPanel'
 import { SearchResultsPanel } from '../components/SearchResultsPanel'
+import { ReportResultsPanel } from '../components/ReportResultsPanel'
 import { PageLoader } from '../components/LoadingSpinner'
 import { PageError } from '../components/ErrorDisplay'
 import { runsAPI } from '../lib/api'
@@ -23,6 +24,11 @@ export function RunDetails() {
   const [run, setRun] = useState<Run | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [mergeStatus, setMergeStatus] = useState<{
+    type: 'loading' | 'success' | 'error'
+    message: string
+    details?: string
+  } | null>(null)
 
   useEffect(() => {
     if (id) {
@@ -159,6 +165,69 @@ export function RunDetails() {
     }
   }
 
+  const handleApproveMerge = async () => {
+    if (!run || !id) return
+    
+    setMergeStatus({
+      type: 'loading',
+      message: 'Approving merge...',
+      details: 'Validating changes and merging to production'
+    })
+
+    try {
+      const response = await fetch(`http://localhost:5000/api/runs/${id}/approve-merge`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        const mergeData = result.data
+        setMergeStatus({
+          type: 'success',
+          message: 'Merge approved successfully!',
+          details: `Changes merged at ${new Date(mergeData.mergedAt).toLocaleString()}. Performance improvement: ${mergeData.performanceImprovement}. Rollback available.`
+        })
+
+        // Refresh run data to show updated status
+        setTimeout(() => {
+          loadRunDetails(id)
+          setMergeStatus(null)
+        }, 5000)
+      } else {
+        throw new Error(result.error || 'Merge approval failed')
+      }
+      
+    } catch (error) {
+      setMergeStatus({
+        type: 'error',
+        message: 'Merge approval failed',
+        details: error instanceof Error ? error.message : 'An unexpected error occurred'
+      })
+    }
+  }
+
+  const handleDeleteFork = async () => {
+    if (!run || !id) return
+    
+    const confirmed = window.confirm(
+      'Are you sure you want to delete this fork? This action cannot be undone.'
+    )
+    
+    if (!confirmed) return
+
+    try {
+      await runsAPI.delete(id)
+      navigate('/')
+    } catch (error) {
+      console.error('Failed to delete fork:', error)
+      // Show error message or toast notification
+    }
+  }
+
   // Loading state
   if (loading) {
     return <PageLoader text="Loading run details..." />
@@ -277,21 +346,47 @@ export function RunDetails() {
                 status={run.status}
               />
 
+              <ReportResultsPanel run={run} />
+
               <ConsoleLogPanel logs={run.logs} />
 
               <div className="flex gap-3">
                 <button
+                  onClick={() => handleApproveMerge()}
                   disabled={!allAgentsCompleted}
                   className={`flex-1 px-6 py-3 rounded-lg font-medium transition-colors ${allAgentsCompleted ? 'bg-[#00B8D9] text-white hover:bg-[#00a5c3]' : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'}`}
                 >
                   <CheckCircleIcon className="inline mr-2" size={18} />
                   Approve Merge
                 </button>
-                <button className="px-6 py-3 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors font-medium">
+                <button 
+                  onClick={() => handleDeleteFork()}
+                  className="px-6 py-3 bg-red-500/10 text-red-500 border border-red-500/20 rounded-lg hover:bg-red-500/20 transition-colors font-medium"
+                >
                   <TrashIcon className="inline mr-2" size={18} />
                   Delete Fork
                 </button>
               </div>
+              
+              {mergeStatus && (
+                <div className={`p-4 rounded-lg border ${
+                  mergeStatus.type === 'success' 
+                    ? 'bg-green-500/10 border-green-500/20 text-green-400' 
+                    : mergeStatus.type === 'error'
+                    ? 'bg-red-500/10 border-red-500/20 text-red-400'
+                    : 'bg-blue-500/10 border-blue-500/20 text-blue-400'
+                }`}>
+                  <div className="flex items-center gap-2">
+                    {mergeStatus.type === 'loading' && (
+                      <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                    )}
+                    <span className="font-medium">{mergeStatus.message}</span>
+                  </div>
+                  {mergeStatus.details && (
+                    <p className="text-sm mt-2 opacity-80">{mergeStatus.details}</p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div>

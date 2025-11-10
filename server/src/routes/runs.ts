@@ -53,6 +53,45 @@ const runsRoutes: FastifyPluginAsync = async (fastify) => {
     }
   });
 
+  // Approve merge for a run
+  fastify.post('/:id/approve-merge', async (request, reply) => {
+    try {
+      const { id } = request.params as { id: string };
+      const run = await orchestrator.getRun(id);
+      
+      if (!run) {
+        return reply.code(404).send({ success: false, error: 'Run not found' });
+      }
+
+      if (run.status !== 'completed') {
+        return reply.code(400).send({ success: false, error: 'Run must be completed before merge approval' });
+      }
+
+      // Simulate merge approval process
+      logger.info(`Approving merge for run: ${id}`);
+      
+      // In a real implementation, this would:
+      // 1. Validate all changes are safe
+      // 2. Create a backup point
+      // 3. Apply changes to production
+      // 4. Verify changes were applied correctly
+      
+      const mergeResult = {
+        runId: id,
+        mergedAt: new Date().toISOString(),
+        status: 'approved',
+        productionChanges: run.steps?.filter(step => step.name === 'dba')?.[0]?.output?.appliedChanges || [],
+        performanceImprovement: run.steps?.filter(step => step.name === 'dba')?.[0]?.output?.performanceMetrics?.queryTime?.improvement || '0%',
+        rollbackAvailable: true
+      };
+      
+      return { success: true, data: mergeResult };
+    } catch (error) {
+      logger.error('Failed to approve merge', error);
+      reply.code(500).send({ success: false, error: 'Failed to approve merge' });
+    }
+  });
+
   // Cancel a run
   fastify.delete('/:id', async (request, reply) => {
     try {

@@ -11,6 +11,7 @@ import { dbInitializer } from './services/dbInit.js';
 import runsRoutes from './routes/runs.js';
 import forksRoutes from './routes/forks.js';
 import questionsRoutes from './routes/questions.js';
+import fileRoutes from './routes/files.js';
 
 const fastify = Fastify({
   logger: true
@@ -29,6 +30,11 @@ const start = async () => {
       credentials: true
     });
 
+    // Register multipart for file uploads (built-in Fastify support)
+    fastify.addContentTypeParser('multipart/form-data', function (request, payload, done) {
+      done(null, payload);
+    });
+
     // Enhanced health check with database status
     fastify.get('/health', async () => {
       const dbHealth = await dbInitializer.checkHealth();
@@ -43,6 +49,13 @@ const start = async () => {
     await fastify.register(runsRoutes, { prefix: '/api/runs' });
     await fastify.register(forksRoutes, { prefix: '/api/forks' });
     await fastify.register(questionsRoutes, { prefix: '/api/questions' });
+    await fastify.register(fileRoutes, { prefix: '/api/files' });
+    
+    // Debug routes (development only)
+    if (config.nodeEnv === 'development') {
+      const debugRoutes = (await import('./routes/debug.js')).default;
+      await fastify.register(debugRoutes, { prefix: '/api/debug' });
+    }
     
     await fastify.listen({ port: config.port, host: '0.0.0.0' });
     logger.info(`Server listening on port ${config.port}`);

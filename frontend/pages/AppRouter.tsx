@@ -4,6 +4,7 @@ import { Sidebar } from '../components/Sidebar'
 import { Dashboard } from './Dashboard'
 import { RunDetails } from './RunDetails'
 import { SearchDemo } from './SearchDemo'
+import { Settings } from './Settings'
 
 export function AppRouter() {
   return (
@@ -13,6 +14,7 @@ export function AppRouter() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/run/:id" element={<RunDetails />} />
         <Route path="/search-demo" element={<SearchDemo />} />
+        <Route path="/settings" element={<Settings />} />
       </Routes>
     </div>
   )

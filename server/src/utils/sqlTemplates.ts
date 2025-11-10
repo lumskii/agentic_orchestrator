@@ -87,8 +87,8 @@ export const sqlTemplates = {
 
   // Insert document with embedding
   insertDocument: `
-    INSERT INTO documents (title, content, embedding, metadata)
-    VALUES ($1, $2, $3, $4)
+    INSERT INTO documents (title, content, embedding, metadata, updated_at)
+    VALUES ($1, $2, $3, $4, NOW())
     RETURNING id;
   `,
 

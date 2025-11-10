@@ -55,3 +55,6 @@ server/test
 server/test-agents-simple.mjs
 server/test-embeddings-simple.mjs
 server/test-openai-embeddings.mjs
+
+scripts
+sample_data.csv

@@ -33,7 +33,16 @@ export interface Fork {
 export interface Question {
   question: string;
   answer: string;
-  sources: any[];
+  sources: Array<{
+    id: string | number;
+    title: string;
+    content: string;
+    score?: number;
+    bm25Score?: number;
+    vectorScore?: number;
+    hybridScore?: number;
+    metadata?: any;
+  }>;
   method: string;
 }
 
@@ -44,6 +53,7 @@ export const runsAPI = {
   create: (data: { question?: string; serviceId?: string }) =>
     api.post<{ success: boolean; data: Run }>('/runs', data),
   delete: (id: string) => api.delete(`/runs/${id}`),
+  approveMerge: (id: string) => api.post<{ success: boolean; data: any }>(`/runs/${id}/approve-merge`),
 };
 
 // Forks API
