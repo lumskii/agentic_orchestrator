@@ -13,7 +13,8 @@
     "seed": "cd server && npm run seed",
     "install:all": "npm install && cd server && npm install && cd ../frontend && npm install",
     "railway:build": "npm run install:all && npm run build:server",
-    "railway:start": "cd server && npm start"
+    "railway:start": "cd server && npm start",
+    "railway:start:fullstack": "cd server && node dist/index.js"
   },
   "keywords": [
     "agentic",
